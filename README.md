@@ -1,3 +1,7 @@
+# Fork
+
+This is a fork of gaultier/zig-bencode with fixes for Zig 0.10.1. See https://github.com/gaultier/zig-bencode/pull/1.
+
 # Bencode encoder/decoder
 
 [Bencode](https://en.wikipedia.org/wiki/Bencode) is an text encoding format, not too dissimilar from JSON.
