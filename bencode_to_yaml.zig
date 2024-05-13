@@ -5,7 +5,7 @@ pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    var args = try std.process.argsAlloc(allocator);
+    const args = try std.process.argsAlloc(allocator);
     const arg = if (args.len == 2) args[1] else return error.MissingCliArgument;
 
     const File = std.fs.File;
