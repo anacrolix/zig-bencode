@@ -15,7 +15,6 @@ fn outputUnicodeEscape(
         std.debug.assert(codepoint <= 0x10FFFF);
         // To escape an extended character that is not in the Basic Multilingual Plane,
         // the character is represented as a 12-character sequence, encoding the UTF-16 surrogate pair.
-
         const high = @as(u21, (codepoint - 0x10000) >> 10) + 0xD800;
         const low = @as(u21, codepoint & 0x3FF) + 0xDC00;
         try out_stream.writeAll("\\u");
@@ -482,17 +481,17 @@ test "parse into number without digits" {
 }
 
 test "parse into bytes" {
-    const value = (try ValueTree.parse("3:abc", testing.allocator)).root.String;
-    defer testing.allocator.free(value);
+    var parsed_tree = try ValueTree.parse("3:abc", testing.allocator);
+    defer parsed_tree.deinit();
 
-    try expectEqualSlices(u8, value, "abc");
+    try expectEqualSlices(u8, parsed_tree.root.String, "abc");
 }
 
 test "parse into unicode bytes" {
-    const value = (try ValueTree.parse("9:毛泽东", testing.allocator)).root.String;
-    defer testing.allocator.free(value);
+    var parsed_tree = try ValueTree.parse("9:毛泽东", testing.allocator);
+    defer parsed_tree.deinit();
 
-    try expectEqualSlices(u8, value, "毛泽东");
+    try expectEqualSlices(u8, parsed_tree.root.String, "毛泽东");
 }
 
 test "parse into bytes with invalid size" {
