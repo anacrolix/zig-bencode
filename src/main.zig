@@ -183,6 +183,8 @@ pub const Value = union(enum) {
             .Map => |map| {
                 try out_stream.writeByte('d');
                 for (map.items) |kv| {
+                    try std.fmt.format(out_stream, "{}", .{kv.key.len});
+                    try out_stream.writeByte(':');
                     try out_stream.writeAll(kv.key);
                     try stringifyValue(kv.value, out_stream);
                 }
@@ -769,4 +771,16 @@ test "stringify array of structs" {
 test "stringify vector" {
     const result: @Vector(2, u32) = @splat(1);
     try teststringify("li1ei1ee", result);
+}
+
+test "stringifyValue map" {
+    const expectData = "d6:lengthi2715254784e4:name30:ubuntu-20.04-desktop-amd64.iso12:piece lengthi1048576ee";
+    var map_test = try ValueTree.parse(expectData, testing.allocator);
+    defer map_test.deinit();
+
+    var buf = std.ArrayList(u8).init(testing.allocator);
+    defer buf.deinit();
+    try map_test.root.stringifyValue(buf.writer());
+
+    try testing.expectEqualSlices(u8, expectData, buf.items);
 }
