@@ -15,8 +15,8 @@ fn outputUnicodeEscape(
         std.debug.assert(codepoint <= 0x10FFFF);
         // To escape an extended character that is not in the Basic Multilingual Plane,
         // the character is represented as a 12-character sequence, encoding the UTF-16 surrogate pair.
-        const high = @intCast(u16, (codepoint - 0x10000) >> 10) + 0xD800;
-        const low = @intCast(u16, codepoint & 0x3FF) + 0xDC00;
+        const high = @as(u21, (codepoint - 0x10000) >> 10) + 0xD800;
+        const low = @as(u21, codepoint & 0x3FF) + 0xDC00;
         try out_stream.writeAll("\\u");
         try std.fmt.formatIntValue(high, "x", std.fmt.FormatOptions{ .width = 4, .fill = '0' }, out_stream);
         try out_stream.writeAll("\\u");
@@ -183,6 +183,8 @@ pub const Value = union(enum) {
             .Map => |map| {
                 try out_stream.writeByte('d');
                 for (map.items) |kv| {
+                    try std.fmt.format(out_stream, "{}", .{kv.key.len});
+                    try out_stream.writeByte(':');
                     try out_stream.writeAll(kv.key);
                     try stringifyValue(kv.value, out_stream);
                 }
@@ -209,7 +211,7 @@ pub const Value = union(enum) {
 };
 
 fn findFirstIndexOf(s: []const u8, needle: u8) ?usize {
-    for (s) |c, i| {
+    for (s, 0..) |c, i| {
         if (c == needle) return i;
     }
     return null;
@@ -307,17 +309,17 @@ pub fn stringify(value: anytype, out_stream: anytype) @TypeOf(out_stream).Error!
             try out_stream.writeByte('e');
         },
         .Union => {
-            if (comptime std.meta.trait.hasFn("bencodeStringify")(T)) {
+            if (comptime std.meta.hasFn(T, "bencodeStringify")) {
                 return value.bencodeStringify(out_stream);
             }
 
             const info = @typeInfo(T).Union;
             if (info.tag_type) |UnionTagType| {
-                inline for (info.fields) |u_field, index| {
+                inline for (info.fields, 0..) |u_field, index| {
                     // I'm not sure what's going on here. I'm guessing we're trying to stringify correct union field based on some tag value. I think Zig has changed the union field type and doesn't embed something we need anymore.
-                    if (@enumToInt(@as(UnionTagType, value)) == index) {
-                    // This is what the code was, probably for an older version.
-                    // if (@enumToInt(@as(UnionTagType, value)) == u_field.enum_field.?.value) {
+                    if (@intFromEnum(@as(UnionTagType, value)) == index) {
+                        // This is what the code was, probably for an older version.
+                        // if (@enumToInt(@as(UnionTagType, value)) == u_field.enum_field.?.value) {
                         return try stringify(@field(value, u_field.name), out_stream);
                     }
                 }
@@ -326,14 +328,14 @@ pub fn stringify(value: anytype, out_stream: anytype) @TypeOf(out_stream).Error!
             }
         },
         .Struct => |S| {
-            if (comptime std.meta.trait.hasFn("bencodeStringify")(T)) {
+            if (comptime std.meta.hasFn(T, "bencodeStringify")) {
                 return value.bencodeStringify(out_stream);
             }
 
             try out_stream.writeByte('d');
             inline for (S.fields) |Field| {
                 // don't include void fields
-                if (Field.field_type == void) continue;
+                if (Field.type == void) continue;
 
                 try stringify(Field.name, out_stream);
                 try stringify(@field(value, Field.name), out_stream);
@@ -481,17 +483,17 @@ test "parse into number without digits" {
 }
 
 test "parse into bytes" {
-    var value = (try ValueTree.parse("3:abc", testing.allocator)).root.String;
-    defer testing.allocator.free(value);
+    var parsed_tree = try ValueTree.parse("3:abc", testing.allocator);
+    defer parsed_tree.deinit();
 
-    try expectEqualSlices(u8, value, "abc");
+    try expectEqualSlices(u8, parsed_tree.root.String, "abc");
 }
 
 test "parse into unicode bytes" {
-    var value = (try ValueTree.parse("9:毛泽东", testing.allocator)).root.String;
-    defer testing.allocator.free(value);
+    var parsed_tree = try ValueTree.parse("9:毛泽东", testing.allocator);
+    defer parsed_tree.deinit();
 
-    try expectEqualSlices(u8, value, "毛泽东");
+    try expectEqualSlices(u8, parsed_tree.root.String, "毛泽东");
 }
 
 test "parse into bytes with invalid size" {
@@ -591,7 +593,7 @@ test "parse into array with missing terminator" {
 }
 
 test "parse into empty map" {
-    var map = (try ValueTree.parse("de", testing.allocator)).root.Map;
+    const map = (try ValueTree.parse("de", testing.allocator)).root.Map;
     try expectEqual(@as(usize, 0), map.items.len);
 }
 
@@ -607,10 +609,10 @@ test "parse map with unordered keys" {
     var value_tree = try ValueTree.parse("d1:ni9e1:mi8ee", testing.allocator);
     defer value_tree.deinit();
 
-    var kv1 = mapLookup(value_tree.root.Map, "m");
+    const kv1 = mapLookup(value_tree.root.Map, "m");
     try expectEqual(kv1.?.Integer, 8);
 
-    var kv2 = mapLookup(value_tree.root.Map, "n");
+    const kv2 = mapLookup(value_tree.root.Map, "n");
     try expectEqual(kv2.?.Integer, 9);
 }
 
@@ -618,10 +620,10 @@ test "parse map" {
     var value_tree = try ValueTree.parse("d6:abcdef3:abc2:foi5ee", testing.allocator);
     defer value_tree.deinit();
 
-    var kv1 = mapLookup(value_tree.root.Map, "abcdef");
+    const kv1 = mapLookup(value_tree.root.Map, "abcdef");
     try expectEqualSlices(u8, kv1.?.String, "abc");
 
-    var kv2 = mapLookup(value_tree.root.Map, "fo");
+    const kv2 = mapLookup(value_tree.root.Map, "fo");
     try expectEqual(kv2.?.Integer, 5);
 }
 
@@ -767,5 +769,18 @@ test "stringify array of structs" {
 }
 
 test "stringify vector" {
-    try teststringify("li1ei1ee", @splat(2, @as(u32, 1)));
+    const result: @Vector(2, u32) = @splat(1);
+    try teststringify("li1ei1ee", result);
+}
+
+test "stringifyValue map" {
+    const expectData = "d6:lengthi2715254784e4:name30:ubuntu-20.04-desktop-amd64.iso12:piece lengthi1048576ee";
+    var map_test = try ValueTree.parse(expectData, testing.allocator);
+    defer map_test.deinit();
+
+    var buf = std.ArrayList(u8).init(testing.allocator);
+    defer buf.deinit();
+    try map_test.root.stringifyValue(buf.writer());
+
+    try testing.expectEqualSlices(u8, expectData, buf.items);
 }
